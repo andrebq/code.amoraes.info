@@ -70,10 +70,10 @@ func (l *Link) Connect(val interface{}) (string, error) {
 		return "", errValNotAPointer
 	}
 
-	id := r.GetFieldOrTag(val, "Id", "").(string)
-	from := r.GetFieldOrTag(val, "From", "").(string)
-	to := r.GetFieldOrTag(val, "To", "").(string)
-	label := r.GetFieldOrTag(val, "Label", "").(string)
+	id := r.GetFieldOrTag(val, "Id", `pgdoc:"Id"`, "").(string)
+	from := r.GetFieldOrTag(val, "From", `pgdoc:"From"`, "").(string)
+	to := r.GetFieldOrTag(val, "To", `pgdoc:"To"`, "").(string)
+	label := r.GetFieldOrTag(val, "Label", `pgdoc:"Label"`, "").(string)
 
 	if len(from) == 0 || len(to) == 0 || len(label) == 0 {
 		return "", errors.New("all links MUST HAVE a valid From, To and Label fields")
