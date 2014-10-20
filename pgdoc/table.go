@@ -10,7 +10,7 @@ func (t *Table) Name() string {
 }
 
 func (t *Table) Load(out interface{}, id string) error {
-	if !t.owner.reflector.isPtr(out) {
+	if !t.owner.reflector.IsPtr(out) {
 		return errValNotAPointer
 	}
 	return t.query(out, id)
@@ -19,12 +19,12 @@ func (t *Table) Load(out interface{}, id string) error {
 // Save will put the given object in the table.
 func (t *Table) Save(val interface{}) (string, error) {
 	r := t.owner.reflector
-	if !r.isPtr(val) {
+	if !r.IsPtr(val) {
 		return "", errValNotAPointer
 	}
 	var id string
-	if r.hasField(val, "Id") {
-		previd := r.getField(val, "Id", "").(string)
+	if r.HasField(val, "Id") {
+		previd := r.GetField(val, "Id", "").(string)
 		if len(previd) == 0 {
 			id = t.newId()
 			return t.insert(id, val)
@@ -48,10 +48,10 @@ func (t *Table) newId() string {
 }
 
 func (t *Table) insert(nid string, val interface{}) (string, error) {
-	t.owner.reflector.setField(val, "Id", nid)
+	t.owner.reflector.SetField(val, "Id", nid)
 	_, err := t.owner.db.Exec(fmt.Sprintf("insert into %v (docid, body) values ($1, $2)", t.name), nid, jsonCol{val}.String())
-	if t.owner.reflector.hasField(val, "Id") {
-		t.owner.reflector.setField(val, "Id", nid)
+	if t.owner.reflector.HasField(val, "Id") {
+		t.owner.reflector.SetField(val, "Id", nid)
 	}
 	return nid, err
 }

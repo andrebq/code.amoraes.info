@@ -3,6 +3,7 @@
 package pgdoc
 
 import (
+	"amoraes.info/pgdoc/reflector"
 	"bytes"
 	"code.google.com/p/go-uuid/uuid"
 	"database/sql"
@@ -35,7 +36,7 @@ type (
 	}
 	Database struct {
 		db        *sql.DB
-		reflector reflector
+		reflector reflector.R
 	}
 	jsonCol struct {
 		val interface{}
@@ -57,7 +58,7 @@ func OpenDatabase(user, password, database, host string) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Database{db, reflector{}}, nil
+	return &Database{db, reflector.R{}}, nil
 }
 
 func (d *Database) Table(name string) (*Table, error) {

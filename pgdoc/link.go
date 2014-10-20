@@ -11,7 +11,7 @@ func (l *Link) Name() string {
 }
 
 func (l *Link) Load(out interface{}, id string) error {
-	if !l.owner.reflector.isPtr(out) {
+	if !l.owner.reflector.IsPtr(out) {
 		return errValNotAPointer
 	}
 	return l.queryById(out, id)
@@ -66,14 +66,14 @@ func (l *Link) LoadMany(from, to, label string) Iterator {
 // Save will put the given object in the table.
 func (l *Link) Connect(val interface{}) (string, error) {
 	r := l.owner.reflector
-	if !r.isPtr(val) {
+	if !r.IsPtr(val) {
 		return "", errValNotAPointer
 	}
 
-	id := r.getFieldOrTag(val, "Id", "").(string)
-	from := r.getFieldOrTag(val, "From", "").(string)
-	to := r.getFieldOrTag(val, "To", "").(string)
-	label := r.getFieldOrTag(val, "Label", "").(string)
+	id := r.GetFieldOrTag(val, "Id", "").(string)
+	from := r.GetFieldOrTag(val, "From", "").(string)
+	to := r.GetFieldOrTag(val, "To", "").(string)
+	label := r.GetFieldOrTag(val, "Label", "").(string)
 
 	if len(from) == 0 || len(to) == 0 || len(label) == 0 {
 		return "", errors.New("all links MUST HAVE a valid From, To and Label fields")
@@ -92,14 +92,14 @@ func (l *Link) newId() string {
 
 func (l *Link) update(id, from, to, label string, val interface{}) (string, error) {
 	id = l.newId()
-	l.owner.reflector.setField(val, "Id", id)
+	l.owner.reflector.SetField(val, "Id", id)
 	_, err := l.owner.db.Exec(fmt.Sprintf("update %v set _from = $2, _to = $3, label = $4, body = $5 where linkid = $1", l.name), id, from, to, label, jsonCol{val}.String())
 	return id, err
 }
 
 func (l *Link) insert(id, from, to, label string, val interface{}) (string, error) {
 	id = l.newId()
-	l.owner.reflector.setField(val, "Id", id)
+	l.owner.reflector.SetField(val, "Id", id)
 	_, err := l.owner.db.Exec(fmt.Sprintf("insert into %v (linkid, _from, _to, label, body) values ($1, $2, $3, $4, $5)", l.name), id, from, to, label, jsonCol{val}.String())
 	return id, err
 }

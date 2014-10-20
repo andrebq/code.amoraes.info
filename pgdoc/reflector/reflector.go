@@ -1,11 +1,11 @@
-package pgdoc
+package reflector
 
 import (
 	"reflect"
 )
 
 type (
-	reflector struct {
+	R struct {
 	}
 )
 
@@ -13,17 +13,17 @@ var (
 	zeroValue = reflect.Value{}
 )
 
-func (r *reflector) isPtr(val interface{}) bool {
+func (r *R) IsPtr(val interface{}) bool {
 	rval := reflect.ValueOf(val)
 	return rval.Kind() == reflect.Ptr
 }
 
-func (r *reflector) setField(val interface{}, name string, nval interface{}) {
+func (r *R) SetField(val interface{}, name string, nval interface{}) {
 	fval := r.fieldByName(val, name)
 	fval.Set(reflect.ValueOf(nval))
 }
 
-func (r *reflector) getField(val interface{}, name string, def interface{}) interface{} {
+func (r *R) GetField(val interface{}, name string, def interface{}) interface{} {
 	fval := r.fieldByName(val, name)
 	if fval == zeroValue {
 		return def
@@ -31,12 +31,12 @@ func (r *reflector) getField(val interface{}, name string, def interface{}) inte
 	return fval.Interface()
 }
 
-func (r *reflector) getFieldOrTag(val interface{}, name string, def interface{}) interface{} {
+func (r *R) GetFieldOrTag(val interface{}, name string, def interface{}) interface{} {
 	// later implement the check for tags
-	return r.getField(val, name, def)
+	return r.GetField(val, name, def)
 }
 
-func (r *reflector) hasField(val interface{}, name string) bool {
+func (r *R) HasField(val interface{}, name string) bool {
 	fval := r.fieldByName(val, name)
 	if fval == zeroValue {
 		return false
@@ -44,7 +44,7 @@ func (r *reflector) hasField(val interface{}, name string) bool {
 	return true
 }
 
-func (r *reflector) fieldByName(val interface{}, name string) reflect.Value {
+func (r *R) fieldByName(val interface{}, name string) reflect.Value {
 	rval := reflect.Indirect(reflect.ValueOf(val))
 	return rval.FieldByName(name)
 }

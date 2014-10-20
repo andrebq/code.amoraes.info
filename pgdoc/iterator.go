@@ -1,6 +1,7 @@
 package pgdoc
 
 import (
+	"amoraes.info/pgdoc/reflector"
 	"database/sql"
 )
 
@@ -35,7 +36,7 @@ type (
 
 	dbRowsIter struct {
 		rows      *sql.Rows
-		reflector reflector
+		reflector reflector.R
 	}
 
 	errIter struct {
@@ -43,7 +44,7 @@ type (
 	}
 )
 
-func newIterator(rows *sql.Rows, r reflector) Iterator {
+func newIterator(rows *sql.Rows, r reflector.R) Iterator {
 	return &dbRowsIter{
 		rows,
 		r,
@@ -63,7 +64,7 @@ func (d *dbRowsIter) Close() error {
 }
 
 func (d *dbRowsIter) Scan(out interface{}) error {
-	if !d.reflector.isPtr(out) {
+	if !d.reflector.IsPtr(out) {
 		return errValNotAPointer
 	}
 	jc := jsonCol{out}
