@@ -30,6 +30,22 @@ func TestCreateTable(t *testing.T) {
 		t.Fatalf("error creating table: %v", err)
 	}
 
+	if err = db.CreateIndex(tbl.Name(), "name", "name"); err != nil {
+		if err == ErrIndexAlreadyExists {
+			err = nil
+			// drop and try to recreate
+			if err = db.DropIndex(tbl.Name(), "name"); err != nil {
+				t.Fatalf("error dropping the index %v: %v", "name", err)
+			}
+
+			if err = db.CreateIndex(tbl.Name(), "name", "name"); err != nil {
+				t.Fatalf("error creating index after drop: %v", err)
+			}
+		} else {
+			t.Fatalf("error creating index on database: %v", err)
+		}
+	}
+
 	person := struct {
 		Id   string
 		Name string

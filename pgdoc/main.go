@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	_ "github.com/lib/pq"
+	"strings"
 )
 
 type (
@@ -28,17 +29,14 @@ type (
 		name  string
 		owner *Database
 	}
-
 	Link struct {
 		name  string
 		owner *Database
 	}
-
 	Database struct {
 		db        *sql.DB
 		reflector reflector
 	}
-
 	jsonCol struct {
 		val interface{}
 	}
@@ -47,6 +45,7 @@ type (
 var (
 	errValNotAPointer      = errors.New("value isn't a pointer to a value")
 	errAtLeastOneParameter = errors.New("at least one parameter should be used")
+	ErrIndexAlreadyExists  = errors.New("index already exists on database")
 )
 
 func OpenDatabase(user, password, database, host string) (*Database, error) {
@@ -123,6 +122,42 @@ func (d *Database) Link(name string) (*Link, error) {
 		return nil, err
 	}
 	return &Link{name, d}, nil
+}
+
+func (d *Database) CreateIndex(tableOrLink string, idxName string, propPath ...string) error {
+	if exists, err := d.indexExistsOn(tableOrLink, idxName); err != nil {
+		return err
+	} else {
+		if exists {
+			return ErrIndexAlreadyExists
+		}
+	}
+	return d.createIndex(tableOrLink, idxName, propPath...)
+}
+
+func (d *Database) DropIndex(tableOrLink string, idxName string) error {
+	return d.dropIndex(tableOrLink, idxName)
+}
+
+func (d *Database) indexExistsOn(tblLnk string, idxname string) (bool, error) {
+	var out bool
+	err := d.db.QueryRow("select true from pg_indexes where tablename = $1 and indexname = $2",
+		tblLnk, fmt.Sprintf("idx_%v_%v", tblLnk, idxname)).Scan(&out)
+	if err == sql.ErrNoRows {
+		err = nil
+	}
+	return out, err
+}
+
+func (d *Database) dropIndex(tblName, idxName string) error {
+	_, err := d.db.Exec(fmt.Sprintf("DROP INDEX idx_%v_%v", tblName, idxName))
+	return err
+}
+
+func (d *Database) createIndex(tblLnk string, idxname string, propPath ...string) error {
+	cmd := fmt.Sprintf("CREATE INDEX idx_%v_%v on %v ((body#>>'{%v}'));", tblLnk, idxname, tblLnk, strings.Join(propPath, ","))
+	_, err := d.db.Exec(cmd)
+	return err
 }
 
 func (d *Database) ensure(def *tableDef) error {

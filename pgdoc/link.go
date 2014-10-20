@@ -6,6 +6,10 @@ import (
 	"fmt"
 )
 
+func (l *Link) Name() string {
+	return l.name
+}
+
 func (l *Link) Load(out interface{}, id string) error {
 	if !l.owner.reflector.isPtr(out) {
 		return errValNotAPointer

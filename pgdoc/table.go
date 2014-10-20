@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+func (t *Table) Name() string {
+	return t.name
+}
+
 func (t *Table) Load(out interface{}, id string) error {
 	if !t.owner.reflector.isPtr(out) {
 		return errValNotAPointer
