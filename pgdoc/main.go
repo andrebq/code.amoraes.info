@@ -125,6 +125,24 @@ func (d *Database) Link(name string) (*Link, error) {
 	return &Link{name, d}, nil
 }
 
+// Truncate remove all data from the given table or link and
+// all related foreign keys (if any)
+func (d *Database) Truncate(tblOrLink string) error {
+	_, err := d.db.Exec(fmt.Sprintf("TRUNCATE %v CASCADE", tblOrLink))
+	return err
+}
+
+func (d *Database) Unique(tableOrLink string, idxName string, propPath ...string) error {
+	if exists, err := d.indexExistsOn(tableOrLink, idxName); err != nil {
+		return err
+	} else {
+		if exists {
+			return ErrIndexAlreadyExists
+		}
+	}
+	return d.createIndex(tableOrLink, idxName, true, propPath...)
+}
+
 func (d *Database) CreateIndex(tableOrLink string, idxName string, propPath ...string) error {
 	if exists, err := d.indexExistsOn(tableOrLink, idxName); err != nil {
 		return err
@@ -133,7 +151,7 @@ func (d *Database) CreateIndex(tableOrLink string, idxName string, propPath ...s
 			return ErrIndexAlreadyExists
 		}
 	}
-	return d.createIndex(tableOrLink, idxName, propPath...)
+	return d.createIndex(tableOrLink, idxName, false, propPath...)
 }
 
 func (d *Database) DropIndex(tableOrLink string, idxName string) error {
@@ -155,8 +173,12 @@ func (d *Database) dropIndex(tblName, idxName string) error {
 	return err
 }
 
-func (d *Database) createIndex(tblLnk string, idxname string, propPath ...string) error {
-	cmd := fmt.Sprintf("CREATE INDEX idx_%v_%v on %v ((body#>>'{%v}'));", tblLnk, idxname, tblLnk, strings.Join(propPath, ","))
+func (d *Database) createIndex(tblLnk string, idxname string, unique bool, propPath ...string) error {
+	uniqueStr := ""
+	if unique {
+		uniqueStr = "UNIQUE"
+	}
+	cmd := fmt.Sprintf("CREATE %v INDEX idx_%v_%v on %v ((body#>>'{%v}'));", uniqueStr, tblLnk, idxname, tblLnk, strings.Join(propPath, ","))
 	_, err := d.db.Exec(cmd)
 	return err
 }

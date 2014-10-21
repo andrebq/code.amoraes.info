@@ -19,6 +19,48 @@ func TestOpen(t *testing.T) {
 	db.Close()
 }
 
+func TestCreateUniqueIndex(t *testing.T) {
+	db := mustOpenDb(t)
+	defer db.Close()
+
+	var tbl *Table
+	var err error
+
+	docs := []struct {
+		Id   string
+		Path string
+	}{{
+		Path: "a/b.go",
+	}, {
+		Path: "a/b.go",
+	}}
+
+	tbl, err = db.Table("uniquedocs")
+	if err != nil {
+		t.Fatalf("error creating table: %v", err)
+	}
+	err = db.Truncate(tbl.Name())
+	if err != nil {
+		t.Errorf("error truncating table: %v.", err)
+	}
+
+	// create the unique index
+	err = db.Unique(tbl.Name(), "path", "Path")
+	if err != nil && err != ErrIndexAlreadyExists {
+		t.Fatalf("error creating unique index: %v", err)
+	}
+
+	_, err = tbl.Save(&(docs[0]))
+	if err != nil {
+		t.Fatalf("error saving the first doc: %v", err)
+	}
+
+	_, err = tbl.Save(&(docs[1]))
+	if err == nil {
+		t.Fatalf("should have caused an error, since the Path is the same")
+	}
+}
+
 func TestCreateTable(t *testing.T) {
 	db := mustOpenDb(t)
 	defer db.Close()
@@ -30,7 +72,7 @@ func TestCreateTable(t *testing.T) {
 		t.Fatalf("error creating table: %v", err)
 	}
 
-	if err = db.CreateIndex(tbl.Name(), "name", "name"); err != nil {
+	if err = db.CreateIndex(tbl.Name(), "name", "Name"); err != nil {
 		if err == ErrIndexAlreadyExists {
 			err = nil
 			// drop and try to recreate
@@ -38,7 +80,7 @@ func TestCreateTable(t *testing.T) {
 				t.Fatalf("error dropping the index %v: %v", "name", err)
 			}
 
-			if err = db.CreateIndex(tbl.Name(), "name", "name"); err != nil {
+			if err = db.CreateIndex(tbl.Name(), "name", "Name"); err != nil {
 				t.Fatalf("error creating index after drop: %v", err)
 			}
 		} else {
