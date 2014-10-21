@@ -75,6 +75,10 @@ func (l *Link) Connect(val interface{}) (string, error) {
 	to := r.GetFieldOrTag(val, "To", `pgdoc:"To"`, "").(string)
 	label := r.GetFieldOrTag(val, "Label", `pgdoc:"Label"`, "").(string)
 
+	if len(label) == 0 {
+		_, label = r.GetTypeName(val)
+	}
+
 	if len(from) == 0 || len(to) == 0 || len(label) == 0 {
 		return "", errors.New("all links MUST HAVE a valid From, To and Label fields")
 	}

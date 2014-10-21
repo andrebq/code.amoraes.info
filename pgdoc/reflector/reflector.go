@@ -33,6 +33,16 @@ func (r *R) SetField(val interface{}, name string, nval interface{}) {
 	fval.Set(reflect.ValueOf(nval))
 }
 
+func (r *R) GetTypeName(val interface{}) (pkg string, name string) {
+	tp := reflect.TypeOf(val)
+	if tp.Kind() == reflect.Ptr {
+		tp = tp.Elem()
+	}
+	pkg = tp.PkgPath()
+	name = tp.Name()
+	return
+}
+
 func (r *R) GetField(val interface{}, name string, def interface{}) interface{} {
 	fval := r.fieldByName(reflect.ValueOf(val), name)
 	if fval == zeroValue {
