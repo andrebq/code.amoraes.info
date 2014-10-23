@@ -43,7 +43,11 @@ func (t *tableDef) create(owner *Database) error {
 
 	for _, col := range t.def {
 		if len(col.idx) > 0 {
-			fmt.Fprintf(buf, "create index idx_%v_%v on %v using %v(%v);\n", t.name, col.name, t.name, col.idx, col.name)
+			if col.idx == "default" {
+				fmt.Fprintf(buf, "create index idx_%v_%v on %v(%v);\n", t.name, col.name, t.name, col.name)
+			} else {
+				fmt.Fprintf(buf, "create index idx_%v_%v on %v using %v(%v);\n", t.name, col.name, t.name, col.idx, col.name)
+			}
 		}
 	}
 	_, err := db.Exec(string(buf.Bytes()))

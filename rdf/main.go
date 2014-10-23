@@ -12,6 +12,7 @@ import (
 	"fmt"
 	_ "github.com/lib/pq"
 	"strings"
+	"time"
 )
 
 type (
@@ -23,19 +24,25 @@ type (
 		pk      bool
 		idx     string
 	}
+	rdfRecord struct {
+		resid     uint64
+		subject   string
+		when      time.Time
+		valtype   ValueType
+		valint    int64
+		valdouble float64
+		valtext   string
+		valjson   jsonCol
+		valref    string
+	}
 	tableDef struct {
 		name string
 		def  []columnDef
 	}
-	Table struct {
-		name    string
-		rdfname string
-		owner   *Database
-	}
 	Changeset struct {
-		tx      *sql.Tx
-		resTbl  string
-		attrTbl string
+		tx       *sql.Tx
+		owner    *Database
+		firstErr error
 	}
 	RdfNode struct {
 		Res     string
@@ -54,11 +61,21 @@ type (
 
 const (
 	Invalid = ValueType(0)
-	String  = ValueType(1)
-	Int     = ValueType(2)
-	Double  = ValueType(4)
-	Doc     = ValueType(8)
+	// RDF node holds a string
+	String = ValueType(1)
+	// RDF node holds a Integer
+	Int = ValueType(2)
+	// RDF node holds a Double
+	Double = ValueType(4)
+	// RDF node holds a JSON Document
+	Doc = ValueType(8)
+	// RDF node holds a ref to another Resource
+	Ref = ValueType(16)
 )
+
+func (vt ValueType) Valid() bool {
+	return vt > Invalid && vt <= Ref
+}
 
 func (vt ValueType) String() string {
 	switch vt {
@@ -70,15 +87,19 @@ func (vt ValueType) String() string {
 		return "Double (64 bits)"
 	case Doc:
 		return "Document (json)"
+	case Ref:
+		return "Reference"
 	}
 	return "Invalid"
 }
 
 var (
-	errValNotAPointer      = errors.New("value isn't a pointer to a value")
-	errAtLeastOneParameter = errors.New("at least one parameter should be used")
-	ErrIndexAlreadyExists  = errors.New("index already exists on database")
-	resTableDef            = tableDef{
+	errValNotAPointer        = errors.New("value isn't a pointer to a value")
+	errAtLeastOneParameter   = errors.New("at least one parameter should be used")
+	errCannotStoreValue      = errors.New("cannot store the given value")
+	ErrIndexAlreadyExists    = errors.New("index already exists on database")
+	errResourceWithoutPrefix = errors.New("resource without a prefix")
+	resTableDef              = tableDef{
 		name: "!invalid",
 		def: []columnDef{
 			columnDef{
@@ -91,7 +112,7 @@ var (
 				name:    "resid",
 				kind:    "bigint",
 				notnull: "not null",
-				idx:     "resid",
+				idx:     "default",
 			},
 		},
 	}
@@ -102,13 +123,13 @@ var (
 				name:    "resid",
 				kind:    "bigint",
 				notnull: "not null",
-				idx:     "resource",
+				idx:     "default",
 			},
 			columnDef{
 				name:    "subject",
-				kind:    "int",
+				kind:    "text",
 				notnull: "not null",
-				idx:     "subject",
+				idx:     "hash",
 			},
 			columnDef{
 				name:    "valtype",
@@ -116,20 +137,34 @@ var (
 				notnull: "not null",
 			},
 			columnDef{
+				name:    "_when",
+				kind:    "timestamp",
+				notnull: "not null",
+				idx:     "default",
+			},
+			columnDef{
 				name: "valint",
 				kind: "bigint",
+				idx:  "default",
 			},
 			columnDef{
 				name: "valdouble",
-				kind: "double",
+				kind: "double precision",
+				idx:  "default",
 			},
 			columnDef{
 				name: "valtext",
 				kind: "text",
+				idx:  "default",
 			},
 			columnDef{
 				name: "valjson",
 				kind: "json",
+			},
+			columnDef{
+				name: "valref",
+				kind: "text",
+				idx:  "hash",
 			},
 		},
 	}
@@ -147,29 +182,65 @@ func OpenDatabase(user, password, database, host string) (*Database, error) {
 	return &Database{db, reflector.R{}}, nil
 }
 
-func (d *Database) Table(name string) (*Table, error) {
+func (d *Database) Begin() (*Changeset, error) {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return &Changeset{
+		tx,
+		d,
+		nil,
+	}, nil
+}
+
+func (d *Database) tableNameForResource(resName string) (string, string, error) {
+	idx := strings.Index(resName, ":")
+	if idx < 0 {
+		return "", "", errResourceWithoutPrefix
+	}
+	prefix := resName[0:idx]
+	return d.tableNameForPrefix(prefix)
+}
+
+func (d *Database) tableNameForPrefix(prefix string) (string, string, error) {
+	return fmt.Sprintf("%v_res", prefix), fmt.Sprintf("%v_rdf", prefix), nil
+}
+
+func (d *Database) CreateResourceAlias(name string) error {
+	resname, rdfname, err := d.tableNameForPrefix(name)
+	if err != nil {
+		return err
+	}
 	rdfDef := tableDef{
-		name: fmt.Sprintf("%v_rdf", name),
+		name: rdfname,
 		def:  rdfTableDef.def,
 	}
 	resDef := tableDef{
-		name: fmt.Sprintf("%v_res", name),
+		name: resname,
 		def:  resTableDef.def,
 	}
 	if err := d.ensure(&resDef); err != nil {
-		return nil, err
+		return err
 	}
 
 	if err := d.ensure(&rdfDef); err != nil {
-		return nil, err
+		return err
 	}
-	return &Table{resDef.name, rdfDef.name, d}, nil
+	return nil
 }
 
 // Truncate remove all data from the given table or link and
 // all related foreign keys (if any)
-func (d *Database) Truncate(tblOrLink string) error {
-	_, err := d.db.Exec(fmt.Sprintf("TRUNCATE %v CASCADE", tblOrLink))
+func (d *Database) Truncate(prefix string) error {
+	resname, rdfname, err := d.tableNameForPrefix(prefix)
+	if err != nil {
+		return err
+	}
+	_, err = d.db.Exec(fmt.Sprintf("TRUNCATE %v CASCADE", resname))
+	if err == nil {
+		_, err = d.db.Exec(fmt.Sprintf("TRUNCATE %v CASCADE", rdfname))
+	}
 	return err
 }
 
