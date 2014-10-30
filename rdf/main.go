@@ -17,6 +17,8 @@ import (
 
 type (
 	ValueType uint8
+	Op        string
+	idslice   []uint64
 	columnDef struct {
 		name    string
 		kind    string
@@ -25,6 +27,7 @@ type (
 		idx     string
 	}
 	rdfRecord struct {
+		resource  string
 		resid     uint64
 		subject   string
 		when      time.Time
@@ -39,6 +42,12 @@ type (
 		name string
 		def  []columnDef
 	}
+	querier interface {
+		// Query many rows
+		Query(string, ...interface{}) (*sql.Rows, error)
+		// Query one row
+		QueryRow(string, ...interface{}) *sql.Row
+	}
 	Changeset struct {
 		tx       *sql.Tx
 		owner    *Database
@@ -50,12 +59,27 @@ type (
 		Type    ValueType
 		Value   interface{}
 	}
+	Query struct {
+		owner  *Database
+		filter []Filter
+		result []RdfNode
+		alias  string
+		tx     querier
+	}
+	Filter struct {
+		Subject string
+		Op      Op
+		Value   interface{}
+	}
 	Database struct {
 		db        *sql.DB
 		reflector reflector.R
 	}
 	jsonCol struct {
 		val interface{}
+	}
+	scanner interface {
+		Scan(out ...interface{}) error
 	}
 )
 
@@ -71,6 +95,15 @@ const (
 	Doc = ValueType(8)
 	// RDF node holds a ref to another Resource
 	Ref = ValueType(16)
+)
+
+const (
+	Equals        = Op("==")
+	Greater       = Op(">")
+	Less          = Op("<")
+	GreaterEquals = Greater + Equals
+	LessEquals    = Less + Equals
+	NotEqual      = Op("!=")
 )
 
 func (vt ValueType) Valid() bool {
@@ -94,12 +127,14 @@ func (vt ValueType) String() string {
 }
 
 var (
-	errValNotAPointer        = errors.New("value isn't a pointer to a value")
-	errAtLeastOneParameter   = errors.New("at least one parameter should be used")
-	errCannotStoreValue      = errors.New("cannot store the given value")
-	ErrIndexAlreadyExists    = errors.New("index already exists on database")
-	errResourceWithoutPrefix = errors.New("resource without a prefix")
-	resTableDef              = tableDef{
+	errValNotAPointer           = errors.New("value isn't a pointer to a value")
+	errNotADocument             = errors.New("not a document value")
+	errCannotQueryWithoutFilter = errors.New("cannot query without a filter")
+	errAtLeastOneParameter      = errors.New("at least one parameter should be used")
+	errCannotStoreValue         = errors.New("cannot store the given value")
+	ErrIndexAlreadyExists       = errors.New("index already exists on database")
+	errResourceWithoutPrefix    = errors.New("resource without a prefix")
+	resTableDef                 = tableDef{
 		name: "!invalid",
 		def: []columnDef{
 			columnDef{
@@ -205,6 +240,23 @@ func (d *Database) tableNameForResource(resName string) (string, string, error) 
 
 func (d *Database) tableNameForPrefix(prefix string) (string, string, error) {
 	return fmt.Sprintf("%v_res", prefix), fmt.Sprintf("%v_rdf", prefix), nil
+}
+
+func (d *Database) resourceNameForUrl(url string) (string, string) {
+	idx := strings.Index(url, ":")
+	if idx < 0 {
+		return "", ""
+	}
+	prefix := url[0:idx]
+	return prefix, url[idx+1:]
+}
+
+func (d *Database) NewQuery(alias string) Query {
+	return Query{
+		alias: alias,
+		owner: d,
+		tx:    d.db,
+	}
 }
 
 func (d *Database) CreateResourceAlias(name string) error {
@@ -315,14 +367,24 @@ func (d *Database) newId(prefix string) string {
 	return uuid.New()
 }
 
+func (jc jsonCol) toPGValue() interface{} {
+	if jc.val == nil {
+		return nil
+	}
+	return jc.String()
+}
+
 func (jc jsonCol) String() string {
+	if jc.val == nil {
+		return "{}"
+	}
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 	enc.Encode(jc.val)
 	return string(buf.Bytes())
 }
 
-func (jc jsonCol) Scan(in interface{}) error {
+func (jc *jsonCol) Scan(in interface{}) error {
 	var buf []byte
 	switch in := in.(type) {
 	case []byte:
@@ -330,8 +392,20 @@ func (jc jsonCol) Scan(in interface{}) error {
 	case string:
 		buf = []byte(buf)
 	default:
+		if in == nil {
+			return nil
+		}
 		return fmt.Errorf("cannot decode value %T into a jsonCol", in)
 	}
+	if buf == nil || len(buf) == 0 {
+		return nil
+	}
 	dec := json.NewDecoder(bytes.NewBuffer(buf))
-	return dec.Decode(jc.val)
+	if jc.val == nil {
+		msg := make(json.RawMessage, len(buf))
+		copy(msg, buf)
+		jc.val = msg
+		return nil
+	}
+	return dec.Decode(&jc.val)
 }

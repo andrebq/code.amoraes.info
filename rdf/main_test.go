@@ -67,4 +67,22 @@ func TestInsertSomeData(t *testing.T) {
 	if err := cs.Err(); err != nil {
 		t.Errorf("first error on changeset: %v", err)
 	}
+
+	query := db.NewQuery("local")
+	if err := query.FetchResource("local:123"); err != nil {
+		t.Errorf("error fetching resource: %v", err)
+	}
+
+	if len(query.Result()) == 0 {
+		t.Errorf("should have at least one result")
+	}
+
+	for _, v := range query.Result() {
+		if v.Type == Doc {
+			tmp := make(map[string]interface{})
+			if err := v.ScanDocument(&tmp); err != nil {
+				t.Errorf("error decoding subject %v: %v", v.Subject, err)
+			}
+		}
+	}
 }

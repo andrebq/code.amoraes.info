@@ -11,9 +11,8 @@ func (c *Changeset) insertRecord(rdfTbl string, rec *rdfRecord) error {
 	if !rec.valtype.Valid() {
 		return errCannotStoreValue
 	}
-	println("will insert: %v", fmt.Sprintf("%#v", rec))
 	query := fmt.Sprintf(`insert into %v(resid, subject, valtype, _when, valint, valdouble, valtext, valjson, valref) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, rdfTbl)
-	_, err := c.tx.Exec(query, rec.resid, rec.subject, rec.valtype, rec.when, rec.valint, rec.valdouble, rec.valtext, rec.valjson.String(), rec.valref)
+	_, err := c.tx.Exec(query, rec.resid, rec.subject, rec.valtype, rec.when, rec.valint, rec.valdouble, rec.valtext, rec.valjson.toPGValue(), rec.valref)
 	return err
 }
 
