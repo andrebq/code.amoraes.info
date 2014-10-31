@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	_ "github.com/lib/pq"
+	"io"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -48,27 +50,31 @@ type (
 		// Query one row
 		QueryRow(string, ...interface{}) *sql.Row
 	}
+	closer interface {
+		Close() error
+	}
 	Changeset struct {
 		tx       *sql.Tx
 		owner    *Database
 		firstErr error
 	}
-	RdfNode struct {
+	Node struct {
 		Res     string
 		Subject string
 		Type    ValueType
+		When    time.Time
 		Value   interface{}
 	}
 	Query struct {
 		owner  *Database
 		filter []Filter
-		result []RdfNode
-		alias  string
+		result []Node
 		tx     querier
 	}
 	Filter struct {
 		Subject string
 		Op      Op
+		Type    ValueType
 		Value   interface{}
 	}
 	Database struct {
@@ -98,7 +104,7 @@ const (
 )
 
 const (
-	Equals        = Op("==")
+	Equals        = Op("=")
 	Greater       = Op(">")
 	Less          = Op("<")
 	GreaterEquals = Greater + Equals
@@ -214,7 +220,9 @@ func OpenDatabase(user, password, database, host string) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Database{db, reflector.R{}}, nil
+	rdfdb := &Database{db, reflector.R{}}
+	err = rdfdb.createResourceAlias("ring0")
+	return rdfdb, err
 }
 
 func (d *Database) Begin() (*Changeset, error) {
@@ -239,7 +247,10 @@ func (d *Database) tableNameForResource(resName string) (string, string, error) 
 }
 
 func (d *Database) tableNameForPrefix(prefix string) (string, string, error) {
-	return fmt.Sprintf("%v_res", prefix), fmt.Sprintf("%v_rdf", prefix), nil
+	// TODO: Implement a proper consistent hashing here
+	//
+	// The user shouldn't care about WHERE the data is stored
+	return fmt.Sprintf("%v_res", "ring0"), fmt.Sprintf("%v_rdf", "ring0"), nil
 }
 
 func (d *Database) resourceNameForUrl(url string) (string, string) {
@@ -251,15 +262,14 @@ func (d *Database) resourceNameForUrl(url string) (string, string) {
 	return prefix, url[idx+1:]
 }
 
-func (d *Database) NewQuery(alias string) Query {
+func (d *Database) NewQuery() Query {
 	return Query{
-		alias: alias,
 		owner: d,
 		tx:    d.db,
 	}
 }
 
-func (d *Database) CreateResourceAlias(name string) error {
+func (d *Database) createResourceAlias(name string) error {
 	resname, rdfname, err := d.tableNameForPrefix(name)
 	if err != nil {
 		return err
@@ -408,4 +418,39 @@ func (jc *jsonCol) Scan(in interface{}) error {
 		return nil
 	}
 	return dec.Decode(&jc.val)
+}
+
+func guessTypeForValue(val reflect.Value) (ValueType, interface{}) {
+	vt := removeIndirection(val)
+	switch vt.Kind() {
+	case reflect.Struct, reflect.Map, reflect.Slice:
+		return Doc, vt.Interface()
+	case reflect.String:
+		return String, vt.String()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return Int, vt.Int()
+	case reflect.Float32, reflect.Float64:
+		return Double, vt.Float()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return Int, int64(vt.Uint())
+	}
+	panic(fmt.Sprintf("cannot guess type for %#T", val))
+}
+
+func removeIndirection(val reflect.Value) reflect.Value {
+	if val.Kind() == reflect.Ptr {
+		return removeIndirection(val.Elem())
+	}
+	return val
+}
+
+func join(fn func(i int) string, n int, sep string) string {
+	buf := &bytes.Buffer{}
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			io.WriteString(buf, sep)
+		}
+		io.WriteString(buf, fn(i))
+	}
+	return string(buf.Bytes())
 }

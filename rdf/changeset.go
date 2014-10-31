@@ -20,14 +20,17 @@ func (c *Changeset) newId() (uint64, error) {
 	return uint64(time.Now().UnixNano()), nil
 }
 
-func (c *Changeset) Save(node *RdfNode) error {
+func (c *Changeset) Save(node *Node) (Node, error) {
 	id, _, rdf, err := c.ensureResource(node.Res)
 	if err != nil {
 		c.pushErr(err)
-		return err
+		return Node{}, err
 	}
 	rec := c.rdfRecordFrom(id, node)
-	return c.pushErr(c.insertRecord(rdf, &rec))
+	err = c.pushErr(c.insertRecord(rdf, &rec))
+	ret := *node
+	ret.When = rec.when
+	return ret, err
 }
 
 func (c *Changeset) pushErr(err error) error {
@@ -48,7 +51,7 @@ func (c *Changeset) Err() error {
 	return c.firstErr
 }
 
-func (c *Changeset) rdfRecordFrom(id uint64, n *RdfNode) rdfRecord {
+func (c *Changeset) rdfRecordFrom(id uint64, n *Node) rdfRecord {
 	rec := rdfRecord{
 		resid:   id,
 		subject: n.Subject,
@@ -62,22 +65,19 @@ func (c *Changeset) rdfRecordFrom(id uint64, n *RdfNode) rdfRecord {
 		rec.valref = n.Value.(string)
 		rec.valtype = n.Type
 	} else {
-		switch vt.Kind() {
-		case reflect.Struct, reflect.Map, reflect.Slice:
-			rec.valtype = Doc
-			rec.valjson.val = n.Value
-		case reflect.String:
-			rec.valtype = String
-			rec.valtext = n.Value.(string)
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			rec.valtype = Int
-			rec.valint = vt.Int()
-		case reflect.Float32, reflect.Float64:
-			rec.valtype = Double
-			rec.valdouble = vt.Float()
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			rec.valtype = Int
-			rec.valint = int64(vt.Uint())
+		var val interface{}
+		rec.valtype, val = guessTypeForValue(vt)
+		switch rec.valtype {
+		case Doc:
+			rec.valjson.val = val
+		case String:
+			rec.valtext = val.(string)
+		case Int:
+			rec.valint = val.(int64)
+		case Double:
+			rec.valdouble = val.(float64)
+		default:
+			panic("cannot handle value of type " + rec.valtype.String())
 		}
 	}
 	return rec

@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func (r *RdfNode) ScanDocument(out interface{}) error {
+func (r *Node) ScanDocument(out interface{}) error {
 	if r.Type != Doc {
 		return errNotADocument
 	}
