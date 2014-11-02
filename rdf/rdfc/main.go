@@ -16,6 +16,24 @@ type (
 		db    *rdf.Database
 	}
 
+	Node struct {
+		Res     string
+		Subject string
+		Value   interface{}
+	}
+
+	Value interface {
+		Str() string
+		Int() int64
+		Double() float64
+		Doc() interface{}
+		Ref() string
+	}
+
+	valWrap struct {
+		actual interface{}
+	}
+
 	nodeList struct {
 		v             []rdf.Node
 		ignoreSubject bool

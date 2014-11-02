@@ -292,20 +292,6 @@ func (d *Database) createResourceAlias(name string) error {
 	return nil
 }
 
-// Truncate remove all data from the given table or link and
-// all related foreign keys (if any)
-func (d *Database) Truncate(prefix string) error {
-	resname, rdfname, err := d.tableNameForPrefix(prefix)
-	if err != nil {
-		return err
-	}
-	_, err = d.db.Exec(fmt.Sprintf("TRUNCATE %v CASCADE", resname))
-	if err == nil {
-		_, err = d.db.Exec(fmt.Sprintf("TRUNCATE %v CASCADE", rdfname))
-	}
-	return err
-}
-
 func (d *Database) Unique(tableOrLink string, idxName string, propPath ...string) error {
 	if exists, err := d.indexExistsOn(tableOrLink, idxName); err != nil {
 		return err

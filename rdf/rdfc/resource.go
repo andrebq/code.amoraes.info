@@ -5,6 +5,15 @@ import (
 	"sort"
 )
 
+func (r *Res) Get(subject string) Value {
+	for _, v := range r.data {
+		if v.Subject == subject {
+			return valWrap{actual: v.Value}
+		}
+	}
+	return valWrap{}
+}
+
 func (r *Res) UpdateInfo(data []rdf.Node) {
 	r.increaseCap(len(data))
 	r.data = append(r.data, data...)

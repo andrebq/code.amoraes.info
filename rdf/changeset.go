@@ -16,8 +16,37 @@ func (c *Changeset) insertRecord(rdfTbl string, rec *rdfRecord) error {
 	return err
 }
 
+func (c *Changeset) deleteResource(resName, resTbl, rdfTbl string) error {
+	var id uint64
+	selId := fmt.Sprintf(`select resid from %v where resource = $1`, resTbl)
+	delRdf := fmt.Sprintf(`delete from %v where resid = $1`, rdfTbl)
+	delRes := fmt.Sprintf(`delete from %v where resid = $1`, resTbl)
+
+	err := c.tx.QueryRow(selId, resName).Scan(&id)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.tx.Exec(delRdf, id)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.tx.Exec(delRes, id)
+	return err
+}
+
 func (c *Changeset) newId() (uint64, error) {
 	return uint64(time.Now().UnixNano()), nil
+}
+
+func (c *Changeset) Purge(url string) error {
+	resTbl, rdfTbl, _ := c.owner.tableNameForResource(url)
+	err := c.deleteResource(url, resTbl, rdfTbl)
+	if err == sql.ErrNoRows {
+		err = nil
+	}
+	return err
 }
 
 func (c *Changeset) Save(node *Node) (Node, error) {
@@ -45,6 +74,10 @@ func (c *Changeset) Done() error {
 		return c.tx.Rollback()
 	}
 	return c.pushErr(c.tx.Commit())
+}
+
+func (c *Changeset) Abort() error {
+	return c.tx.Rollback()
 }
 
 func (c *Changeset) Err() error {

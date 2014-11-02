@@ -5,6 +5,39 @@ import (
 	"github.com/golang/groupcache/lru"
 )
 
+// Bind this section to this database
+func (s *Session) Open(user, passwd, dbname, host string) error {
+	s.Close()
+	db, err := rdf.OpenDatabase(user, passwd, dbname, host)
+	if err != nil {
+		return err
+	}
+	s.cs = nil
+	s.db = db
+	s.cache = lru.New(0)
+	return nil
+}
+
+func (s *Session) Close() error {
+	// abort any pending changes
+	s.Abort()
+	s.cache = nil
+	s.cs = nil
+	var err error
+	if s.db != nil {
+		err = s.db.Close()
+	}
+	s.db = nil
+	return err
+}
+
+func (s *Session) Purge(url string) error {
+	if err := s.beginChanges(); err != nil {
+		return err
+	}
+	return s.cs.Purge(url)
+}
+
 // LoadResource will seek for the resource in the database and save
 // all data inside this session.
 //
@@ -29,6 +62,21 @@ func (s *Session) Link(from, subject, to string) error {
 	})
 }
 
+func (s *Session) SetMany(changes ...Node) error {
+	var err error
+	for _, c := range changes {
+		err = s.addInfo(rdf.Node{
+			Res:     c.Res,
+			Subject: c.Subject,
+			Value:   c.Value,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Session) Set(url string, subject string, value interface{}) error {
 	return s.addInfo(rdf.Node{
 		Res:     url,
@@ -37,12 +85,25 @@ func (s *Session) Set(url string, subject string, value interface{}) error {
 	})
 }
 
+func (s *Session) Done() error {
+	if s.cs != nil {
+		cs := s.cs
+		s.cs = nil
+		return cs.Done()
+	}
+	return nil
+}
+
+func (s *Session) Abort() error {
+	if s.cs != nil {
+		return s.cs.Abort()
+	}
+	return nil
+}
+
 func (s *Session) addInfo(node rdf.Node) error {
-	if s.cs == nil {
-		err := s.beginChanges()
-		if err != nil {
-			return err
-		}
+	if err := s.beginChanges(); err != nil {
+		return err
 	}
 	node, err := s.cs.Save(&node)
 	if err != nil {
@@ -52,17 +113,23 @@ func (s *Session) addInfo(node rdf.Node) error {
 }
 
 func (s *Session) beginChanges() error {
+	if s.cs != nil {
+		// nothing to do
+		return nil
+	}
 	var err error
 	s.cs, err = s.db.Begin()
 	return err
 }
 
 func (s *Session) updateCache(n rdf.Node) error {
+	// load previous data just in case the user want's it later
 	res, err := s.LoadResource(n.Res)
-	if err != nil {
+	if err == nil {
 		// since the fetch runs outside our changeset,
 		// we can include this node without any worries
 		res.AddInfo(n)
+		s.cacheResource(n.Res, res)
 	}
 	return err
 }
@@ -77,10 +144,14 @@ func (s *Session) fetchAndCacheResource(url string) (*Res, error) {
 
 	res := &Res{}
 	res.UpdateInfo(q.Result())
+	s.cacheResource(url, res)
 
+	return res, nil
+}
+
+func (s *Session) cacheResource(url string, res *Res) {
 	if len(res.data) > 0 {
 		// cache only if we have some data to cache
 		s.cache.Add(lru.Key(url), res)
 	}
-	return res, nil
 }
