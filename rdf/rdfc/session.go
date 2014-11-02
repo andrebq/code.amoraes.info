@@ -18,6 +18,10 @@ func (s *Session) Open(user, passwd, dbname, host string) error {
 	return nil
 }
 
+func (s *Session) TruncateDatabase() error {
+	return s.db.TruncateDatabase()
+}
+
 func (s *Session) Close() error {
 	// abort any pending changes
 	s.Abort()
@@ -62,13 +66,13 @@ func (s *Session) Link(from, subject, to string) error {
 	})
 }
 
-func (s *Session) SetMany(changes ...Node) error {
+func (s *Session) SetMany(res string, changes ...Node) error {
 	var err error
 	for _, c := range changes {
 		err = s.addInfo(rdf.Node{
-			Res:     c.Res,
-			Subject: c.Subject,
-			Value:   c.Value,
+			Res:     res,
+			Subject: c.S,
+			Value:   c.V,
 		})
 		if err != nil {
 			return err
@@ -96,6 +100,12 @@ func (s *Session) Done() error {
 
 func (s *Session) Abort() error {
 	if s.cs != nil {
+		// evict the whole cache, since we might have some
+		// data that will become invalid when we call
+		// the abort on the changeset
+		//
+		// TODO: think in a more precise eviction policy
+		s.cache = lru.New(0)
 		return s.cs.Abort()
 	}
 	return nil
@@ -151,6 +161,7 @@ func (s *Session) fetchAndCacheResource(url string) (*Res, error) {
 
 func (s *Session) cacheResource(url string, res *Res) {
 	if len(res.data) > 0 {
+		res.id = url
 		// cache only if we have some data to cache
 		s.cache.Add(lru.Key(url), res)
 	}

@@ -218,11 +218,82 @@ func OpenDatabase(user, password, database, host string) (*Database, error) {
 	}
 	err = db.Ping()
 	if err != nil {
+		db.Close()
 		return nil, err
 	}
 	rdfdb := &Database{db, reflector.R{}}
-	err = rdfdb.createResourceAlias("ring0")
+	// ring0 must exist always, since it could be used
+	// to store meta-data about the other rings
+	err = rdfdb.createResourceAlias("ring_sys")
+	rings, err := rdfdb.getAllRings()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	for _, r := range rings {
+		err := rdfdb.createResourceAlias(r)
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
 	return rdfdb, err
+}
+
+func doInsideTransaction(tx *sql.Tx, op func(tx *sql.Tx) error) (err error) {
+	defer func() {
+		if problem := recover(); problem != nil {
+			// a panic, should abort this
+			err = tx.Rollback()
+			if err != nil {
+				err = fmt.Errorf("%v happened when rollingback a transaction. cause [panic]: %v", err, problem)
+			} else {
+				err = fmt.Errorf("rollback [panic]: %v", problem)
+			}
+			return
+		}
+
+		// no panic, let's check the error
+		if err == nil {
+			// everything is fine, let's commit
+			err = tx.Commit()
+		} else {
+			// oops, need to rollback
+			tmp := tx.Rollback()
+			if tmp != nil {
+				err = fmt.Errorf("%v happened when rollingback a transaction. cause [error]: %v", tmp, err)
+			}
+			// if we didn't got an error from rollback, just let the initial
+			// error go to the outside
+		}
+	}()
+	err = op(tx)
+	return
+}
+
+func (d *Database) TruncateDatabase() (err error) {
+	rings, err := d.getAllRings()
+	if err != nil {
+		return err
+	}
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	return doInsideTransaction(tx, func(tx *sql.Tx) error {
+		for _, r := range rings {
+			res, rdf, _ := d.tableNameForRing(r)
+			_, err = tx.Exec(fmt.Sprintf("truncate table %v cascade", rdf))
+			if err != nil {
+				return err
+			}
+			_, err = tx.Exec(fmt.Sprintf("truncate table %v cascade", res))
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (d *Database) Begin() (*Changeset, error) {
@@ -247,10 +318,25 @@ func (d *Database) tableNameForResource(resName string) (string, string, error) 
 }
 
 func (d *Database) tableNameForPrefix(prefix string) (string, string, error) {
+	if prefix == "sys" {
+		return d.tableNameForRing("ring_sys")
+	}
 	// TODO: Implement a proper consistent hashing here
 	//
-	// The user shouldn't care about WHERE the data is stored
-	return fmt.Sprintf("%v_res", "ring0"), fmt.Sprintf("%v_rdf", "ring0"), nil
+	// The user shouldn't care about WHERE the data is stored,
+	// getAllRings returns the list of available rings to store data
+	return d.tableNameForRing("ring0")
+}
+
+func (d *Database) tableNameForRing(ring string) (string, string, error) {
+	return fmt.Sprintf("%v_res", ring), fmt.Sprintf("%v_rdf", ring), nil
+}
+
+// Return all rings that can be used to split the data
+//
+// TODO: at this moment this uses only one ring (ring0)
+func (d *Database) getAllRings() ([]string, error) {
+	return []string{"ring0"}, nil
 }
 
 func (d *Database) resourceNameForUrl(url string) (string, string) {

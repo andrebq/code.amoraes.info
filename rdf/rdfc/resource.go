@@ -5,6 +5,10 @@ import (
 	"sort"
 )
 
+func (r *Res) Id() string {
+	return r.id
+}
+
 func (r *Res) Get(subject string) Value {
 	for _, v := range r.data {
 		if v.Subject == subject {

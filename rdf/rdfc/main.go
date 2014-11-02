@@ -8,6 +8,7 @@ import (
 type (
 	Res struct {
 		data []rdf.Node
+		id   string
 	}
 
 	Session struct {
@@ -17,9 +18,9 @@ type (
 	}
 
 	Node struct {
-		Res     string
-		Subject string
-		Value   interface{}
+		Res string
+		S   string
+		V   interface{}
 	}
 
 	Value interface {

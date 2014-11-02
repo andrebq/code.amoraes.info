@@ -9,6 +9,11 @@ func mustOpenDb(t *testing.T) *Database {
 	if err != nil {
 		t.Fatalf("error opening database: %v", err)
 	}
+
+	err = db.TruncateDatabase()
+	if err != nil {
+		t.Fatalf("error truncating database: %v", err)
+	}
 	_ = db
 	return db
 }
