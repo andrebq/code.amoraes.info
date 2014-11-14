@@ -12,10 +12,23 @@ func (r *Res) Id() string {
 func (r *Res) Get(subject string) Value {
 	for _, v := range r.data {
 		if v.Subject == subject {
-			return valWrap{actual: v.Value}
+			return valWrap{
+				actual:  v.Value,
+				valtype: Type(v.Type),
+			}
 		}
 	}
 	return valWrap{}
+}
+
+func (r *Res) GetAll(subject string) []Value {
+	var ret []Value
+	for _, v := range r.data {
+		if v.Subject == subject {
+			ret = append(ret, valWrap{actual: v.Value})
+		}
+	}
+	return ret
 }
 
 func (r *Res) UpdateInfo(data []rdf.Node) {

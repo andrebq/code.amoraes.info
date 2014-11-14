@@ -2,8 +2,18 @@ package rdfc
 
 import (
 	"amoraes.info/rdf"
+	"code.google.com/p/go-uuid/uuid"
 	"github.com/golang/groupcache/lru"
 )
+
+func OpenCopy(other *Session) (*Session, error) {
+	next := *other
+	next.db = nil
+	next.cache = nil
+	next.cs = nil
+
+	return &next, next.Open(other.user, other.pwd, other.dbname, other.host)
+}
 
 // Bind this section to this database
 func (s *Session) Open(user, passwd, dbname, host string) error {
@@ -15,7 +25,15 @@ func (s *Session) Open(user, passwd, dbname, host string) error {
 	s.cs = nil
 	s.db = db
 	s.cache = lru.New(0)
+	s.user = user
+	s.pwd = passwd
+	s.dbname = dbname
+	s.host = host
 	return nil
+}
+
+func (s *Session) RandomID() (string, error) {
+	return uuid.New(), nil
 }
 
 func (s *Session) TruncateDatabase() error {
@@ -42,6 +60,22 @@ func (s *Session) Purge(url string) error {
 	return s.cs.Purge(url)
 }
 
+func (s *Session) Get(res string, field string) (Value, error) {
+	r, err := s.LoadResource(res)
+	if err != nil {
+		return nil, err
+	}
+	return r.Get(field), nil
+}
+
+func (s *Session) GetAll(res string, field string) ([]Value, error) {
+	r, err := s.LoadResource(res)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetAll(field), nil
+}
+
 // LoadResource will seek for the resource in the database and save
 // all data inside this session.
 //
@@ -55,6 +89,33 @@ func (s *Session) LoadResource(url string) (*Res, error) {
 	} else {
 		return s.fetchAndCacheResource(url)
 	}
+}
+
+func (s *Session) FindResoure(filter ...Filter) ([]*Res, error) {
+	q := s.db.NewQuery()
+	for _, f := range filter {
+		q.AddFilter(f.toRdfFilter())
+	}
+	err := q.Exec()
+	if err != nil {
+		return nil, err
+	}
+
+	tmp := make(map[string]*Res)
+	var ret []*Res
+
+	for _, n := range q.Result() {
+		if r, has := tmp[n.Res]; has {
+			r.AddInfo(n)
+		} else {
+			res := &Res{}
+			res.id = n.Res
+			ret = append(ret, res)
+			tmp[n.Res] = res
+			res.AddInfo(n)
+		}
+	}
+	return ret, nil
 }
 
 func (s *Session) Link(from, subject, to string) error {
@@ -72,7 +133,8 @@ func (s *Session) SetMany(res string, changes ...Node) error {
 		err = s.addInfo(rdf.Node{
 			Res:     res,
 			Subject: c.S,
-			Value:   c.V,
+			Value:   c.V.Raw(),
+			Type:    rdf.ValueType(c.V.Type()),
 		})
 		if err != nil {
 			return err
@@ -81,7 +143,7 @@ func (s *Session) SetMany(res string, changes ...Node) error {
 	return nil
 }
 
-func (s *Session) Set(url string, subject string, value interface{}) error {
+func (s *Session) Set(url string, subject string, value Value) error {
 	return s.addInfo(rdf.Node{
 		Res:     url,
 		Subject: subject,

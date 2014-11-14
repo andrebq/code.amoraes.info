@@ -21,7 +21,7 @@ func TestSession(t *testing.T) {
 	s.Purge("user:Bob123")
 	s.Done()
 
-	if err := s.Set("user:Bob123", "user:Email", "bob123@example.com"); err != nil {
+	if err := s.SetMany("user:Bob123", Node{S: "user:Email", V: NewString("bob123@example.com")}); err != nil {
 		t.Fatalf("error changing the user email: %v", err)
 	}
 
@@ -32,5 +32,20 @@ func TestSession(t *testing.T) {
 
 	if res.Get("user:Email").Str() != "bob123@example.com" {
 		t.Fatalf("Unexpected email. should be %v got %v", "bob123@example.com", res.Get("user:Email").Str())
+	}
+	s.Done()
+
+	s2 := mustOpenSession(t)
+
+	if res, err := s2.FindResoure(Filter{Subject: "user:Email", Val: NewString("bob123@example.com")}); err != nil {
+		t.Errorf("error searching for resources... %v", err)
+	} else {
+		if len(res) != 1 {
+			t.Errorf("should have found only one match. but got: %v", len(res))
+		}
+
+		if res[0].Id() != "user:Bob123" {
+			t.Errorf("Invalid Id should be %v got %v", "user:Bob123", res[0].Id())
+		}
 	}
 }

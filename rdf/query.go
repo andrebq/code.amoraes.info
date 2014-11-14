@@ -30,6 +30,9 @@ func (q *Query) CopyFilterFrom(other *Query) *Query {
 // Return the list of resources that have all filters as true
 func (q *Query) Exec() error {
 	results, err := q.fetchIdSet()
+	if err != nil {
+		return err
+	}
 	ids := q.intersect(results, false)
 	err = q.rebuildResources(ids)
 	return err
