@@ -62,6 +62,14 @@ func (c *Changeset) Save(node *Node) (Node, error) {
 	return ret, err
 }
 
+// Return a Query object that will consider the data updated
+// by this changeset.
+func (c *Changeset) NewQuery() Query {
+	q := c.owner.NewQuery()
+	q.tx = c.tx
+	return q
+}
+
 func (c *Changeset) pushErr(err error) error {
 	if c.firstErr == nil {
 		c.firstErr = err

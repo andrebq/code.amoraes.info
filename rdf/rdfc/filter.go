@@ -10,9 +10,9 @@ func (f *Filter) toRdfFilter() rdf.Filter {
 		op = "="
 	}
 	return rdf.Filter{
-		Subject: f.Subject,
+		Subject: f.S,
 		Op:      rdf.Op(op),
-		Value:   f.Val.Raw(),
-		Type:    rdf.ValueType(f.Val.Type()),
+		Value:   f.V.Raw(),
+		Type:    rdf.ValueType(f.V.Type()),
 	}
 }

@@ -25,9 +25,9 @@ type (
 	}
 
 	Filter struct {
-		Subject string
-		Op      string
-		Val     Value
+		S  string
+		Op string
+		V  Value
 	}
 
 	Node struct {
@@ -64,3 +64,7 @@ const (
 	Doc    = Type(rdf.Doc)
 	Ref    = Type(rdf.Ref)
 )
+
+func IsNoData(e error) bool {
+	return rdf.IsNoData(e)
+}

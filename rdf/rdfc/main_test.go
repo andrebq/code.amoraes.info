@@ -37,7 +37,7 @@ func TestSession(t *testing.T) {
 
 	s2 := mustOpenSession(t)
 
-	if res, err := s2.FindResoure(Filter{Subject: "user:Email", Val: NewString("bob123@example.com")}); err != nil {
+	if res, err := s2.FindResource(Filter{S: "user:Email", V: NewString("bob123@example.com")}); err != nil {
 		t.Errorf("error searching for resources... %v", err)
 	} else {
 		if len(res) != 1 {

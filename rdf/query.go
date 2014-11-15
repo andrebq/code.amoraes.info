@@ -34,6 +34,9 @@ func (q *Query) Exec() error {
 		return err
 	}
 	ids := q.intersect(results, false)
+	if len(ids) == 0 {
+		return nil
+	}
 	err = q.rebuildResources(ids)
 	return err
 }
@@ -164,6 +167,9 @@ func (q *Query) scanIdsInto(out []uint64, in *sql.Rows) ([]uint64, error) {
 		}
 		out = append(out, id)
 	}
+	if in.Err() == nil && len(out) == 0 {
+		return out, errNoData
+	}
 	sort.Sort(idslice(out))
 	return out, in.Err()
 }
@@ -273,6 +279,9 @@ func (i idslice) Swap(a, b int) {
 //
 // And also returns true only if id is found at the index returned above.
 func (i idslice) FindIndex(id uint64) (int, bool) {
+	if len(i) == 0 {
+		return 0, false
+	}
 	idx := sort.Search(i.Len(), func(idx int) bool {
 		return i[idx] >= id
 	})

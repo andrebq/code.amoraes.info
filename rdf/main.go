@@ -134,6 +134,7 @@ func (vt ValueType) String() string {
 
 var (
 	errValNotAPointer           = errors.New("value isn't a pointer to a value")
+	errNoData                   = errors.New("no data was found")
 	errNotADocument             = errors.New("not a document value")
 	errCannotQueryWithoutFilter = errors.New("cannot query without a filter")
 	errAtLeastOneParameter      = errors.New("at least one parameter should be used")
@@ -525,4 +526,8 @@ func join(fn func(i int) string, n int, sep string) string {
 		io.WriteString(buf, fn(i))
 	}
 	return string(buf.Bytes())
+}
+
+func IsNoData(e error) bool {
+	return e == errNoData
 }

@@ -91,8 +91,14 @@ func (s *Session) LoadResource(url string) (*Res, error) {
 	}
 }
 
-func (s *Session) FindResoure(filter ...Filter) ([]*Res, error) {
-	q := s.db.NewQuery()
+func (s *Session) FindResource(filter ...Filter) ([]*Res, error) {
+	var q rdf.Query
+	if s.cs != nil {
+		q = s.cs.NewQuery()
+	} else {
+		q = s.db.NewQuery()
+	}
+
 	for _, f := range filter {
 		q.AddFilter(f.toRdfFilter())
 	}
